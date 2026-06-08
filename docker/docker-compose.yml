@@ -1,0 +1,175 @@
+version: "3.9"
+
+networks:
+  s3net:
+    driver: bridge
+
+volumes:
+  minio-data:
+  seaweedfs-master-data:
+  seaweedfs-volume-data:
+  garage-meta:
+  garage-data:
+  rustfs-data:
+  liteio-data:
+
+services:
+  # --- MinIO ---
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-07-23T15-54-02Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      - s3net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio-init:
+    image: quay.io/minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - s3net
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 minioadmin minioadmin &&
+        mc mb --ignore-existing local/test-bucket
+      "
+
+  # --- SeaweedFS ---
+  seaweedfs-master:
+    image: chrislusf/seaweedfs:4.32
+    command: master -ip=seaweedfs-master -port=9333
+    ports:
+      - "9333:9333"
+    volumes:
+      - seaweedfs-master-data:/data
+    networks:
+      - s3net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9333/cluster/status"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  seaweedfs-volume:
+    image: chrislusf/seaweedfs:4.32
+    command: volume -mserver=seaweedfs-master:9333 -port=8080 -dir=/data
+    ports:
+      - "8080:8080"
+    volumes:
+      - seaweedfs-volume-data:/data
+    networks:
+      - s3net
+    depends_on:
+      seaweedfs-master:
+        condition: service_healthy
+
+  seaweedfs-filer:
+    image: chrislusf/seaweedfs:4.32
+    command: filer -master=seaweedfs-master:9333 -port=8888
+    ports:
+      - "8888:8888"
+    networks:
+      - s3net
+    depends_on:
+      seaweedfs-master:
+        condition: service_healthy
+      seaweedfs-volume:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8888/"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  seaweedfs-s3:
+    image: chrislusf/seaweedfs:4.32
+    command: s3 -filer=seaweedfs-filer:8888 -port=8333
+    ports:
+      - "8333:8333"
+    networks:
+      - s3net
+    depends_on:
+      seaweedfs-filer:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8333/"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # --- Garage ---
+  garage:
+    image: dxflrs/garage:v2.3.0
+    ports:
+      - "3900:3900"
+      - "3901:3901"
+      - "3902:3902"
+      - "3903:3903"
+    volumes:
+      - ./garage.toml:/etc/garage.toml:ro
+      - garage-meta:/var/lib/garage/meta
+      - garage-data:/var/lib/garage/data
+    networks:
+      - s3net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3903/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  # --- RustFS ---
+  rustfs-init:
+    image: alpine:latest
+    command: chown -R 10001:10001 /data
+    volumes:
+      - rustfs-data:/data
+
+  rustfs:
+    image: rustfs/rustfs:1.0.0-beta.7
+    ports:
+      - "9100:9000"
+      - "9101:9001"
+    environment:
+      RUSTFS_ROOT_USER: rustfsadmin
+      RUSTFS_ROOT_PASSWORD: rustfsadmin
+    volumes:
+      - rustfs-data:/data
+    networks:
+      - s3net
+    depends_on:
+      rustfs-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # --- liteio ---
+  liteio:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    ports:
+      - "9200:9000"
+      - "9201:9001"
+    environment:
+      LITEIO_ROOT_USER: liteio
+      LITEIO_ROOT_PASSWORD: liteiosecret
+    volumes:
+      - liteio-data:/data
+    networks:
+      - s3net

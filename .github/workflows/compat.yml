@@ -1,0 +1,136 @@
+name: S3 Compat
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.target }})
+    runs-on: ubuntu-24.04
+    fail-fast: false
+    strategy:
+      matrix:
+        target: [minio, seaweedfs, rustfs, liteio]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Start ${{ matrix.target }}
+        run: docker compose -f docker/docker-compose.yml up -d ${{ matrix.target }}
+
+      - name: Wait for ${{ matrix.target }} to be healthy
+        env:
+          S3COMPAT_TARGET: ${{ matrix.target }}
+        run: |
+          cp configs/targets.example.yml configs/targets.yml
+          WAIT_TIMEOUT=90 bash scripts/wait-healthy.sh
+
+      - name: Run tests
+        env:
+          S3COMPAT_TARGET: ${{ matrix.target }}
+        run: go test ./... -v -timeout 300s -json | tee results-${{ matrix.target }}.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: results-${{ matrix.target }}
+          path: results-${{ matrix.target }}.json
+
+  test-garage:
+    name: test (garage)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Start garage
+        run: docker compose -f docker/docker-compose.yml up -d garage
+
+      - name: Wait for garage admin API
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3903/health; then
+              echo "Garage is healthy."
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "Garage did not become healthy in time." >&2
+          exit 1
+
+      - name: Initialize garage
+        run: bash scripts/init-garage.sh
+
+      - name: Run tests
+        env:
+          S3COMPAT_TARGET: garage
+          S3COMPAT_ACCESS_KEY_FILE: /tmp/garage-key-id
+          S3COMPAT_SECRET_KEY_FILE: /tmp/garage-key-secret
+        run: |
+          cp configs/targets.example.yml configs/targets.yml
+          KEY_ID=$(cat /tmp/garage-key-id)
+          KEY_SECRET=$(cat /tmp/garage-key-secret)
+          S3COMPAT_TARGET=garage \
+          S3COMPAT_ACCESS_KEY="$KEY_ID" \
+          S3COMPAT_SECRET_KEY="$KEY_SECRET" \
+          go test ./... -v -timeout 300s -json | tee results-garage.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: results-garage
+          path: results-garage.json
+
+  matrix:
+    name: Generate compat matrix
+    needs: [test, test-garage]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: results-*
+          merge-multiple: true
+
+      - name: Generate matrix
+        run: go run ./scripts/gen-matrix results-*.json > COMPAT.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: COMPAT.md
+          path: COMPAT.md
+
+  lint:
+    name: lint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          go-version-file: go.mod

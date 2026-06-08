@@ -1,0 +1,6 @@
+configs/targets.yml
+results-*.json
+COMPAT.md
+*.test
+/tmp/
+.env
