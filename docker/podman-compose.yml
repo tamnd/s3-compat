@@ -1,3 +1,7 @@
+# podman-compose variant of docker-compose.yml
+# Run with: podman-compose -f docker/podman-compose.yml up -d
+# Cleanup:  podman-compose -f docker/podman-compose.yml down -v
+
 version: "3.9"
 
 networks:
@@ -28,8 +32,9 @@ services:
       - minio-data:/data
     networks:
       - s3net
+    userns_mode: keep-id
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -57,8 +62,9 @@ services:
       - seaweedfs-master-data:/data
     networks:
       - s3net
+    userns_mode: keep-id
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:9333/cluster/status"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9333/cluster/status"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -72,6 +78,7 @@ services:
       - seaweedfs-volume-data:/data
     networks:
       - s3net
+    userns_mode: keep-id
     depends_on:
       seaweedfs-master:
         condition: service_healthy
@@ -89,7 +96,7 @@ services:
       seaweedfs-volume:
         condition: service_started
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8888/"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8888/"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -105,7 +112,7 @@ services:
       seaweedfs-filer:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8333/"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8333/"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -124,8 +131,9 @@ services:
       - garage-data:/var/lib/garage/data
     networks:
       - s3net
+    userns_mode: keep-id
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3903/health"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3903/health"]
       interval: 5s
       timeout: 5s
       retries: 15
@@ -149,11 +157,12 @@ services:
       - rustfs-data:/data
     networks:
       - s3net
+    userns_mode: keep-id
     depends_on:
       rustfs-init:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -173,3 +182,4 @@ services:
       - liteio-data:/data
     networks:
       - s3net
+    userns_mode: keep-id
