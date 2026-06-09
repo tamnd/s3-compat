@@ -19,7 +19,7 @@ services:
     networks:
       - s3net
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:9333/cluster/status"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9333/cluster/status"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -50,25 +50,23 @@ services:
       seaweedfs-volume:
         condition: service_started
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8888/"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8888/"]
       interval: 5s
       timeout: 5s
       retries: 10
 
   seaweedfs-s3:
     image: chrislusf/seaweedfs:4.32
-    command: s3 -filer=seaweedfs-filer:8888 -port=8333 -cert.file=/certs/server.crt -key.file=/certs/server.key
+    command: s3 -filer=seaweedfs-filer:8888 -port=8333
     ports:
       - "8333:8333"
-    volumes:
-      - ../../certs:/certs:ro
     networks:
       - s3net
     depends_on:
       seaweedfs-filer:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-check-certificate", "-qO-", "https://localhost:8333/"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8333/"]
       interval: 5s
       timeout: 5s
       retries: 10
