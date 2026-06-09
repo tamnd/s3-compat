@@ -50,7 +50,8 @@ targets:
       multipart: true
 
   seaweedfs:
-    endpoint: https://localhost:8333
+    endpoint: http://localhost:8333
+    ca_cert: ""
     access_key: any
     secret_key: any
     region: us-east-1
@@ -59,7 +60,7 @@ targets:
       versioning: true
       object_lock: true
       lifecycle: true
-      cors: true
+      cors: false
       acl: false
       policy: false
       notifications: false
@@ -72,7 +73,8 @@ targets:
       multipart: true
 
   garage:
-    endpoint: https://localhost:3900
+    endpoint: http://localhost:3900
+    ca_cert: ""
     access_key: placeholder-key-id
     secret_key: placeholder-key-secret
     region: garage
@@ -81,7 +83,7 @@ targets:
       versioning: false
       object_lock: false
       lifecycle: true
-      cors: true
+      cors: false
       acl: false
       policy: false
       notifications: false
@@ -94,7 +96,8 @@ targets:
       multipart: true
 
   rustfs:
-    endpoint: https://localhost:9100
+    endpoint: http://localhost:9100
+    ca_cert: ""
     access_key: rustfsadmin
     secret_key: rustfsadmin
     region: us-east-1
@@ -123,16 +126,16 @@ targets:
     use_path_style: true
     features:
       versioning: true
-      object_lock: false
+      object_lock: true
       lifecycle: true
       cors: true
-      acl: false
-      policy: false
+      acl: true
+      policy: true
       notifications: true
-      encryption_sse_s3: false
-      encryption_sse_kms: false
+      encryption_sse_s3: true
+      encryption_sse_kms: true
       encryption_sse_c: true
-      replication: false
+      replication: true
       select: true
       tagging: true
       multipart: true
