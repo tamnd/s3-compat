@@ -172,7 +172,7 @@ services:
   # --- liteio ---
   liteio:
     build:
-      context: docker
+      context: .
       dockerfile: Dockerfile.liteio
     ports:
       - "9200:9000"

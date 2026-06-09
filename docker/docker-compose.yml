@@ -174,7 +174,7 @@ services:
   # Pass certs via LITEIO_TLS_CERT / LITEIO_TLS_KEY; added in PR #64.
   liteio:
     build:
-      context: docker
+      context: .
       dockerfile: Dockerfile.liteio
     ports:
       - "9200:9000"
