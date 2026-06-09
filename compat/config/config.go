@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 
@@ -63,9 +64,15 @@ func Load(targetName string) (*Target, error) {
 		targetName = "minio"
 	}
 
-	data, err := os.ReadFile(cfgPath)
+	absCfgPath, err := filepath.Abs(cfgPath)
 	if err != nil {
-		return nil, fmt.Errorf("reading config %s: %w", cfgPath, err)
+		return nil, fmt.Errorf("resolving config path %s: %w", cfgPath, err)
+	}
+	cfgDir := filepath.Dir(absCfgPath)
+
+	data, err := os.ReadFile(absCfgPath)
+	if err != nil {
+		return nil, fmt.Errorf("reading config %s: %w", absCfgPath, err)
 	}
 
 	var f File
@@ -118,6 +125,16 @@ func Load(targetName string) (*Target, error) {
 	}
 	if v := os.Getenv("S3COMPAT_CA_CERT"); v != "" {
 		t.CACert = v
+	}
+
+	// Merge defaults for ca_cert.
+	if t.CACert == "" && f.Defaults.CACert != "" {
+		t.CACert = f.Defaults.CACert
+	}
+	// Resolve ca_cert relative to the config file directory so tests can be run
+	// from any working directory.
+	if t.CACert != "" && !filepath.IsAbs(t.CACert) {
+		t.CACert = filepath.Join(cfgDir, t.CACert)
 	}
 
 	return &t, nil

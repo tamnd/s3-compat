@@ -1,6 +1,7 @@
 FROM golang:1.26-alpine AS builder
+RUN apk add --no-cache git
 WORKDIR /src
-COPY . .
+RUN git clone --depth=1 https://github.com/tamnd/liteio.git .
 RUN go build -o /liteio ./cmd/liteio
 
 FROM alpine:3.21
