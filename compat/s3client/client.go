@@ -60,6 +60,11 @@ func Load(targetName string) (*Client, error) {
 		awsconfig.WithCredentialsProvider(
 			credentials.NewStaticCredentialsProvider(target.AccessKey, target.SecretKey, ""),
 		),
+		// Only calculate checksums when explicitly required by the operation.
+		// The SDK default (WhenSupported) auto-adds CRC32 to UploadPart which
+		// breaks LocalStack 3.x when the CreateMultipartUpload did not declare
+		// a checksum algorithm.
+		awsconfig.WithRequestChecksumCalculation(aws.RequestChecksumCalculationWhenRequired),
 	}
 	if httpClient != nil {
 		opts = append(opts, awsconfig.WithHTTPClient(httpClient))
