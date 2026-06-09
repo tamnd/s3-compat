@@ -1,0 +1,40 @@
+version: "3.9"
+
+networks:
+  s3net:
+    driver: bridge
+
+volumes:
+  rustfs-data:
+
+services:
+  # RustFS follows the same cert convention as MinIO: certs at
+  # /root/.minio/certs/public.crt and private.key enable HTTPS.
+  rustfs-init:
+    image: alpine:latest
+    command: chown -R 10001:10001 /data
+    volumes:
+      - rustfs-data:/data
+
+  rustfs:
+    image: rustfs/rustfs:1.0.0-beta.7
+    ports:
+      - "9100:9000"
+      - "9101:9001"
+    environment:
+      RUSTFS_ROOT_USER: rustfsadmin
+      RUSTFS_ROOT_PASSWORD: rustfsadmin
+    volumes:
+      - rustfs-data:/data
+      - ../../certs/server.crt:/root/.minio/certs/public.crt:ro
+      - ../../certs/server.key:/root/.minio/certs/private.key:ro
+    networks:
+      - s3net
+    depends_on:
+      rustfs-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-k", "-f", "https://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10

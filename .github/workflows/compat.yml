@@ -28,7 +28,7 @@ jobs:
         run: bash scripts/gen-certs.sh
 
       - name: Start ${{ matrix.target }}
-        run: docker compose -f docker/docker-compose.yml up -d ${{ matrix.target }}
+        run: docker compose -f docker/${{ matrix.target }}/docker-compose.yml up -d
 
       - name: Wait for ${{ matrix.target }} to be healthy
         env:
@@ -64,7 +64,7 @@ jobs:
         run: bash scripts/gen-certs.sh
 
       - name: Start garage
-        run: docker compose -f docker/docker-compose.yml up -d garage
+        run: docker compose -f docker/garage/docker-compose.yml up -d
 
       - name: Wait for garage admin API
         run: |
