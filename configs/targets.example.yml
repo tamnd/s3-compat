@@ -128,7 +128,7 @@ targets:
       cors: true
       acl: false
       policy: true
-      notifications: false
+      notifications: true
       encryption_sse_s3: true
       encryption_sse_kms: false
       encryption_sse_c: false
