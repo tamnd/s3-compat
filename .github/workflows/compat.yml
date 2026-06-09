@@ -134,6 +134,7 @@ jobs:
           S3COMPAT_TARGET: ceph
         run: |
           cp configs/targets.example.yml configs/targets.yml
+          set -o pipefail
           go test ./... -v -timeout 300s -json | tee results-ceph.json
 
       - uses: actions/upload-artifact@v4
