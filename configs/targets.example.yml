@@ -57,8 +57,8 @@ targets:
     use_path_style: true
     features:
       versioning: true
-      object_lock: false
-      lifecycle: false
+      object_lock: true
+      lifecycle: true
       cors: true
       acl: false
       policy: false
@@ -80,7 +80,7 @@ targets:
     features:
       versioning: false
       object_lock: false
-      lifecycle: false
+      lifecycle: true
       cors: true
       acl: false
       policy: false
@@ -107,9 +107,9 @@ targets:
       acl: false
       policy: true
       notifications: false
-      encryption_sse_s3: false
+      encryption_sse_s3: true
       encryption_sse_kms: false
-      encryption_sse_c: false
+      encryption_sse_c: true
       replication: false
       select: false
       tagging: true
@@ -127,12 +127,12 @@ targets:
       lifecycle: true
       cors: true
       acl: false
-      policy: true
+      policy: false
       notifications: true
-      encryption_sse_s3: true
+      encryption_sse_s3: false
       encryption_sse_kms: false
-      encryption_sse_c: false
+      encryption_sse_c: true
       replication: false
-      select: false
+      select: true
       tagging: true
       multipart: true
