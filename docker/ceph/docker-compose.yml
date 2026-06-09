@@ -1,0 +1,25 @@
+version: "3.9"
+
+volumes:
+  ceph-data:
+
+services:
+  ceph:
+    image: quay.io/ceph/demo:latest-reef
+    platform: linux/amd64
+    environment:
+      MON_IP: "127.0.0.1"
+      CEPH_PUBLIC_NETWORK: "0.0.0.0/0"
+      CEPH_DEMO_UID: s3test
+      CEPH_DEMO_ACCESS_KEY: cephtest
+      CEPH_DEMO_SECRET_KEY: cephtestsecret
+      DEMO_DAEMONS: "osd mds rgw"
+    ports:
+      - "7480:8080"
+    volumes:
+      - ceph-data:/var/lib/ceph
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:8080"]
+      interval: 10s
+      timeout: 10s
+      retries: 30

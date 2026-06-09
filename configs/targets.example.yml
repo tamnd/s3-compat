@@ -138,6 +138,60 @@ targets:
       list_buckets_consistent: true
       list_multipart: false
 
+  localstack:
+    endpoint: http://localhost:4566
+    ca_cert: ""
+    access_key: test
+    secret_key: test
+    region: us-east-1
+    use_path_style: true
+    features:
+      versioning: true
+      object_lock: false
+      lifecycle: true
+      cors: true
+      acl: true
+      policy: true
+      notifications: false
+      encryption_sse_s3: true
+      encryption_sse_kms: false
+      encryption_sse_c: true
+      replication: false
+      select: false
+      tagging: true
+      multipart: true
+      strict_auth: false
+      strict_delete_bucket: true
+      list_buckets_consistent: true
+      list_multipart: true
+
+  ceph:
+    endpoint: http://localhost:7480
+    ca_cert: ""
+    access_key: cephtest
+    secret_key: cephtestsecret
+    region: us-east-1
+    use_path_style: true
+    features:
+      versioning: true
+      object_lock: false
+      lifecycle: true
+      cors: true
+      acl: true
+      policy: true
+      notifications: false
+      encryption_sse_s3: false
+      encryption_sse_kms: false
+      encryption_sse_c: false
+      replication: false
+      select: false
+      tagging: true
+      multipart: true
+      strict_auth: true
+      strict_delete_bucket: true
+      list_buckets_consistent: true
+      list_multipart: true
+
   liteio:
     endpoint: https://localhost:9200
     ca_cert: ../certs/ca.crt

@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [minio, seaweedfs, rustfs, liteio]
+        target: [minio, seaweedfs, rustfs, localstack, liteio]
     steps:
       - uses: actions/checkout@v4
 
@@ -102,9 +102,49 @@ jobs:
           name: results-garage
           path: results-garage.json
 
+  test-ceph:
+    name: test (ceph)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Start ceph
+        run: docker compose -f docker/ceph/docker-compose.yml up -d
+
+      - name: Wait for Ceph RGW
+        run: |
+          for i in $(seq 1 120); do
+            if curl -sf http://localhost:7480 >/dev/null 2>&1; then
+              echo "Ceph RGW is healthy."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Ceph RGW did not become healthy in time." >&2
+          docker compose -f docker/ceph/docker-compose.yml logs
+          exit 1
+
+      - name: Run tests
+        env:
+          S3COMPAT_TARGET: ceph
+        run: |
+          cp configs/targets.example.yml configs/targets.yml
+          go test ./... -v -timeout 300s -json | tee results-ceph.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: results-ceph
+          path: results-ceph.json
+
   matrix:
     name: Generate compat matrix
-    needs: [test, test-garage]
+    needs: [test, test-garage, test-ceph]
     if: always()
     runs-on: ubuntu-24.04
     steps:
