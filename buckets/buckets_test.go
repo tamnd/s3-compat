@@ -92,6 +92,7 @@ func TestGetBucketLocation(t *testing.T) {
 }
 
 func TestBucketTagging(t *testing.T) {
+	skip.Feature(t, "tagging", client.Target.Features)
 	bucket := client.RandBucket("buckets")
 	client.CreateBucket(t, bucket)
 	ctx := context.Background()
