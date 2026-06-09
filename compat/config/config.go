@@ -47,15 +47,40 @@ type File struct {
 	Targets  map[string]Target `yaml:"targets"`
 }
 
+// findConfigFile walks up the directory tree from the current working directory
+// until it locates the relative config path or reaches the filesystem root.
+func findConfigFile(rel string) string {
+	dir, err := os.Getwd()
+	if err != nil {
+		return rel
+	}
+	for {
+		candidate := filepath.Join(dir, rel)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return rel
+}
+
 // Load reads the target config from S3COMPAT_CONFIG (default: configs/targets.yml)
 // and returns the target named by S3COMPAT_TARGET (default: minio).
 // Env vars S3COMPAT_ENDPOINT, S3COMPAT_ACCESS_KEY, S3COMPAT_SECRET_KEY,
 // S3COMPAT_REGION, S3COMPAT_USE_PATH_STYLE, S3COMPAT_SKIP_TLS_VERIFY
 // override values from the file.
+//
+// When S3COMPAT_CONFIG is not set, the loader walks up from the working
+// directory until it finds configs/targets.yml or reaches the filesystem
+// root. This allows tests to be run from any package subdirectory.
 func Load(targetName string) (*Target, error) {
 	cfgPath := os.Getenv("S3COMPAT_CONFIG")
 	if cfgPath == "" {
-		cfgPath = "configs/targets.yml"
+		cfgPath = findConfigFile("configs/targets.yml")
 	}
 	if targetName == "" {
 		targetName = os.Getenv("S3COMPAT_TARGET")

@@ -2,7 +2,6 @@ defaults:
   region: us-east-1
   use_path_style: true
   bucket_prefix: s3compat-
-  ca_cert: ../certs/ca.crt
 
 targets:
   aws:
@@ -29,6 +28,7 @@ targets:
 
   minio:
     endpoint: https://localhost:9000
+    ca_cert: ../certs/ca.crt
     access_key: minioadmin
     secret_key: minioadmin
     region: us-east-1
@@ -120,6 +120,7 @@ targets:
 
   liteio:
     endpoint: https://localhost:9200
+    ca_cert: ../certs/ca.crt
     access_key: liteio
     secret_key: liteiosecret
     region: us-east-1

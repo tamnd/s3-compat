@@ -9,8 +9,6 @@ volumes:
   garage-data:
 
 services:
-  # TLS is configured in garage.toml via tls_certificate_file / tls_private_key_file.
-  # Admin API stays plain HTTP on port 3903.
   garage:
     image: dxflrs/garage:v2.3.0
     ports:
@@ -22,11 +20,10 @@ services:
       - ./garage.toml:/etc/garage.toml:ro
       - garage-meta:/var/lib/garage/meta
       - garage-data:/var/lib/garage/data
-      - ../../certs:/certs:ro
     networks:
       - s3net
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3903/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3903/health"]
       interval: 5s
       timeout: 5s
       retries: 15
