@@ -148,18 +148,24 @@ func Load(targetName string) (*Target, error) {
 		b, _ := strconv.ParseBool(v)
 		t.SkipTLSVerify = b
 	}
-	if v := os.Getenv("S3COMPAT_CA_CERT"); v != "" {
-		t.CACert = v
-	}
-
 	// Merge defaults for ca_cert.
 	if t.CACert == "" && f.Defaults.CACert != "" {
 		t.CACert = f.Defaults.CACert
 	}
-	// Resolve ca_cert relative to the config file directory so tests can be run
-	// from any working directory.
+	// Resolve ca_cert from the config file relative to the config file's
+	// directory. This makes ../certs/ca.crt work from any subdirectory.
 	if t.CACert != "" && !filepath.IsAbs(t.CACert) {
 		t.CACert = filepath.Join(cfgDir, t.CACert)
+	}
+
+	// S3COMPAT_CA_CERT overrides after resolution so callers can pass an
+	// absolute path or a path relative to their working directory.
+	if v := os.Getenv("S3COMPAT_CA_CERT"); v != "" {
+		if !filepath.IsAbs(v) {
+			cwd, _ := os.Getwd()
+			v = filepath.Join(cwd, v)
+		}
+		t.CACert = v
 	}
 
 	return &t, nil

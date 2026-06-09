@@ -40,7 +40,6 @@ jobs:
       - name: Run tests
         env:
           S3COMPAT_TARGET: ${{ matrix.target }}
-          S3COMPAT_CA_CERT: certs/ca.crt
         run: |
           set -o pipefail
           go test ./... -v -timeout 300s -json | tee results-${{ matrix.target }}.json
