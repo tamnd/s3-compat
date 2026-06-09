@@ -76,7 +76,9 @@ func TestPutBucketACLPublicRead(t *testing.T) {
 	require.NoError(t, err)
 
 	url := objectURL(bucket, "test-acl.txt")
-	resp, err := http.Get(url) //nolint:noctx
+	hreq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	require.NoError(t, err)
+	resp, err := client.HTTPClient.Do(hreq)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -126,7 +128,9 @@ func TestPutObjectACLPublicRead(t *testing.T) {
 	require.NoError(t, err)
 
 	url := objectURL(bucket, "pub.txt")
-	resp, err := http.Get(url) //nolint:noctx
+	hreq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	require.NoError(t, err)
+	resp, err := client.HTTPClient.Do(hreq)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)

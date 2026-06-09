@@ -2,6 +2,7 @@ defaults:
   region: us-east-1
   use_path_style: true
   bucket_prefix: s3compat-
+  ca_cert: certs/ca.crt
 
 targets:
   aws:
@@ -27,7 +28,7 @@ targets:
       multipart: true
 
   minio:
-    endpoint: http://localhost:9000
+    endpoint: https://localhost:9000
     access_key: minioadmin
     secret_key: minioadmin
     region: us-east-1
@@ -36,20 +37,20 @@ targets:
       versioning: true
       object_lock: true
       lifecycle: true
-      cors: true
+      cors: false
       acl: false
       policy: true
-      notifications: true
-      encryption_sse_s3: true
+      notifications: false
+      encryption_sse_s3: false
       encryption_sse_kms: false
       encryption_sse_c: true
-      replication: true
+      replication: false
       select: true
       tagging: true
       multipart: true
 
   seaweedfs:
-    endpoint: http://localhost:8333
+    endpoint: https://localhost:8333
     access_key: any
     secret_key: any
     region: us-east-1
@@ -71,7 +72,7 @@ targets:
       multipart: true
 
   garage:
-    endpoint: http://localhost:3900
+    endpoint: https://localhost:3900
     access_key: placeholder-key-id
     secret_key: placeholder-key-secret
     region: garage
@@ -93,7 +94,7 @@ targets:
       multipart: true
 
   rustfs:
-    endpoint: http://localhost:9100
+    endpoint: https://localhost:9100
     access_key: rustfsadmin
     secret_key: rustfsadmin
     region: us-east-1
@@ -115,7 +116,7 @@ targets:
       multipart: true
 
   liteio:
-    endpoint: http://localhost:9200
+    endpoint: https://localhost:9200
     access_key: liteio
     secret_key: liteiosecret
     region: us-east-1

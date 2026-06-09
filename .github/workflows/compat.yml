@@ -24,6 +24,9 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Generate TLS certs
+        run: bash scripts/gen-certs.sh
+
       - name: Start ${{ matrix.target }}
         run: docker compose -f docker/docker-compose.yml up -d ${{ matrix.target }}
 
@@ -37,6 +40,7 @@ jobs:
       - name: Run tests
         env:
           S3COMPAT_TARGET: ${{ matrix.target }}
+          S3COMPAT_CA_CERT: certs/ca.crt
         run: go test ./... -v -timeout 300s -json | tee results-${{ matrix.target }}.json
 
       - uses: actions/upload-artifact@v4
@@ -55,6 +59,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Generate TLS certs
+        run: bash scripts/gen-certs.sh
 
       - name: Start garage
         run: docker compose -f docker/docker-compose.yml up -d garage
@@ -77,6 +84,7 @@ jobs:
       - name: Run tests
         env:
           S3COMPAT_TARGET: garage
+          S3COMPAT_CA_CERT: certs/ca.crt
           S3COMPAT_ACCESS_KEY_FILE: /tmp/garage-key-id
           S3COMPAT_SECRET_KEY_FILE: /tmp/garage-key-secret
         run: |
@@ -86,6 +94,7 @@ jobs:
           S3COMPAT_TARGET=garage \
           S3COMPAT_ACCESS_KEY="$KEY_ID" \
           S3COMPAT_SECRET_KEY="$KEY_SECRET" \
+          S3COMPAT_CA_CERT=certs/ca.crt \
           go test ./... -v -timeout 300s -json | tee results-garage.json
 
       - uses: actions/upload-artifact@v4
