@@ -2,7 +2,6 @@ package auth_test
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
@@ -33,11 +32,10 @@ func TestMain(m *testing.M) {
 
 func buildClient(t *testing.T, accessKey, secretKey string) *s3.Client {
 	t.Helper()
-	httpC := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}} //nolint:gosec
 	cfg, err := awsconfig.LoadDefaultConfig(context.Background(),
 		awsconfig.WithRegion(client.Target.Region),
 		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, "")),
-		awsconfig.WithHTTPClient(httpC),
+		awsconfig.WithHTTPClient(client.HTTPClient),
 	)
 	require.NoError(t, err)
 	return s3.NewFromConfig(cfg, func(o *s3.Options) {
@@ -78,7 +76,9 @@ func TestPresignedGetURL(t *testing.T) {
 	}, s3.WithPresignExpires(10*time.Minute))
 	require.NoError(t, err)
 
-	resp, err := http.Get(req.URL) //nolint:noctx
+	hreq, err := http.NewRequestWithContext(context.Background(), http.MethodGet, req.URL, nil)
+	require.NoError(t, err)
+	resp, err := client.HTTPClient.Do(hreq)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	require.Equal(t, 200, resp.StatusCode)
@@ -98,10 +98,10 @@ func TestPresignedPutURL(t *testing.T) {
 	require.NoError(t, err)
 
 	putBody := strings.NewReader("presign-put-body")
-	hr, err := http.NewRequest(http.MethodPut, req.URL, putBody)
+	hr, err := http.NewRequestWithContext(context.Background(), http.MethodPut, req.URL, putBody)
 	require.NoError(t, err)
 
-	resp, err := http.DefaultClient.Do(hr)
+	resp, err := client.HTTPClient.Do(hr)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	require.True(t, resp.StatusCode < 300, "presigned PUT status: "+fmt.Sprint(resp.StatusCode))
@@ -124,7 +124,9 @@ func TestPresignedURLExpired(t *testing.T) {
 
 	time.Sleep(3 * time.Second)
 
-	resp, err := http.Get(req.URL) //nolint:noctx
+	hreq, err := http.NewRequestWithContext(context.Background(), http.MethodGet, req.URL, nil)
+	require.NoError(t, err)
+	resp, err := client.HTTPClient.Do(hreq)
 	if err == nil {
 		defer resp.Body.Close()
 		require.NotEqual(t, 200, resp.StatusCode, "expired presigned URL should not return 200")

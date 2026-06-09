@@ -121,12 +121,12 @@ func TestCORSPreflight(t *testing.T) {
 	require.NoError(t, err)
 
 	url := bucketURL(bucket)
-	req, err := http.NewRequest("OPTIONS", url, nil)
+	req, err := http.NewRequestWithContext(context.Background(), "OPTIONS", url, nil)
 	require.NoError(t, err)
 	req.Header.Set("Origin", "http://cors-test.example")
 	req.Header.Set("Access-Control-Request-Method", "GET")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.HTTPClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -156,12 +156,12 @@ func TestCORSPreflightNoMatch(t *testing.T) {
 	require.NoError(t, err)
 
 	url := bucketURL(bucket)
-	req, err := http.NewRequest("OPTIONS", url, nil)
+	req, err := http.NewRequestWithContext(context.Background(), "OPTIONS", url, nil)
 	require.NoError(t, err)
 	req.Header.Set("Origin", "http://not-allowed.example")
 	req.Header.Set("Access-Control-Request-Method", "GET")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.HTTPClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -189,12 +189,12 @@ func TestCORSWildcardOrigin(t *testing.T) {
 	require.NoError(t, err)
 
 	url := bucketURL(bucket)
-	req, err := http.NewRequest("OPTIONS", url, nil)
+	req, err := http.NewRequestWithContext(context.Background(), "OPTIONS", url, nil)
 	require.NoError(t, err)
 	req.Header.Set("Origin", "http://anything.example")
 	req.Header.Set("Access-Control-Request-Method", "GET")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.HTTPClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 

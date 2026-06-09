@@ -1,12 +1,15 @@
 package s3client
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"math/rand"
 	"net/http"
+	"os"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -20,8 +23,9 @@ import (
 
 // Client wraps an S3 client with the loaded target configuration.
 type Client struct {
-	S3     *s3.Client
-	Target *config.Target
+	S3         *s3.Client
+	Target     *config.Target
+	HTTPClient *http.Client // use for raw HTTP calls (presigned URLs, etc.)
 }
 
 // Load builds an S3 client for the named target.
@@ -32,11 +36,23 @@ func Load(targetName string) (*Client, error) {
 	}
 
 	var httpClient *http.Client
-	if target.SkipTLSVerify {
-		tr := &http.Transport{ //nolint:gosec
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+	switch {
+	case target.CACert != "":
+		pem, err := os.ReadFile(target.CACert)
+		if err != nil {
+			return nil, fmt.Errorf("reading CA cert %s: %w", target.CACert, err)
 		}
-		httpClient = &http.Client{Transport: tr}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(pem) {
+			return nil, fmt.Errorf("parsing CA cert %s: no valid PEM block found", target.CACert)
+		}
+		httpClient = &http.Client{Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{RootCAs: pool},
+		}}
+	case target.SkipTLSVerify:
+		httpClient = &http.Client{Transport: &http.Transport{ //nolint:gosec
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+		}}
 	}
 
 	opts := []func(*awsconfig.LoadOptions) error{
@@ -63,9 +79,14 @@ func Load(targetName string) (*Client, error) {
 		},
 	}
 
+	rawHTTP := httpClient
+	if rawHTTP == nil {
+		rawHTTP = http.DefaultClient
+	}
 	return &Client{
-		S3:     s3.NewFromConfig(cfg, s3Opts...),
-		Target: target,
+		S3:         s3.NewFromConfig(cfg, s3Opts...),
+		Target:     target,
+		HTTPClient: rawHTTP,
 	}, nil
 }
 
@@ -164,7 +185,7 @@ func (c *Client) PutObject(t testing.TB, bucket, key string, body []byte) {
 	_, err := c.S3.PutObject(context.Background(), &s3.PutObjectInput{
 		Bucket: aws.String(bucket),
 		Key:    aws.String(key),
-		Body:   &bytesReader{data: body},
+		Body:   bytes.NewReader(body),
 	})
 	if err != nil {
 		t.Fatalf("PutObject %q/%q: %v", bucket, key, err)
@@ -182,29 +203,9 @@ func (c *Client) GetObjectBody(t testing.TB, bucket, key string) []byte {
 		t.Fatalf("GetObject %q/%q: %v", bucket, key, err)
 	}
 	defer out.Body.Close()
-	buf := make([]byte, 0, 512)
-	tmp := make([]byte, 4096)
-	for {
-		n, readErr := out.Body.Read(tmp)
-		buf = append(buf, tmp[:n]...)
-		if readErr != nil {
-			break
-		}
+	data, readErr := io.ReadAll(out.Body)
+	if readErr != nil {
+		t.Fatalf("reading GetObject body %q/%q: %v", bucket, key, readErr)
 	}
-	return buf
-}
-
-// bytesReader wraps []byte to satisfy io.Reader for PutObject.
-type bytesReader struct {
-	data []byte
-	pos  int
-}
-
-func (r *bytesReader) Read(p []byte) (int, error) {
-	if r.pos >= len(r.data) {
-		return 0, io.EOF
-	}
-	n := copy(p, r.data[r.pos:])
-	r.pos += n
-	return n, nil
+	return data
 }

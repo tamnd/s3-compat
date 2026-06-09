@@ -38,6 +38,11 @@ func TestLoadKnownTarget(t *testing.T) {
 	path := writeTempYAML(t, testYAML)
 	t.Setenv("S3COMPAT_CONFIG", path)
 	t.Setenv("S3COMPAT_TARGET", "minio")
+	// Clear any outer-env overrides so this unit test is self-contained.
+	t.Setenv("S3COMPAT_ENDPOINT", "")
+	t.Setenv("S3COMPAT_ACCESS_KEY", "")
+	t.Setenv("S3COMPAT_SECRET_KEY", "")
+	t.Setenv("S3COMPAT_CA_CERT", "")
 
 	target, err := config.Load("")
 	if err != nil {

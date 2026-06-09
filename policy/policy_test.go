@@ -110,7 +110,9 @@ func TestBucketPolicyPublicRead(t *testing.T) {
 	require.NoError(t, err)
 
 	url := objectURL(bucket, "public.txt")
-	resp, err := http.Get(url) //nolint:noctx
+	hreq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	require.NoError(t, err)
+	resp, err := client.HTTPClient.Do(hreq)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	// Drain the body.

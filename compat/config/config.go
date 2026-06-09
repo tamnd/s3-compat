@@ -29,14 +29,15 @@ type Features struct {
 
 // Target holds connection and capability settings for one S3 endpoint.
 type Target struct {
-	Endpoint       string   `yaml:"endpoint"`
-	AccessKey      string   `yaml:"access_key"`
-	SecretKey      string   `yaml:"secret_key"`
-	Region         string   `yaml:"region"`
-	UsePathStyle   bool     `yaml:"use_path_style"`
-	SkipTLSVerify  bool     `yaml:"skip_tls_verify"`
-	BucketPrefix   string   `yaml:"bucket_prefix"`
-	Features       Features `yaml:"features"`
+	Endpoint      string   `yaml:"endpoint"`
+	AccessKey     string   `yaml:"access_key"`
+	SecretKey     string   `yaml:"secret_key"`
+	Region        string   `yaml:"region"`
+	UsePathStyle  bool     `yaml:"use_path_style"`
+	SkipTLSVerify bool     `yaml:"skip_tls_verify"`
+	CACert        string   `yaml:"ca_cert"`
+	BucketPrefix  string   `yaml:"bucket_prefix"`
+	Features      Features `yaml:"features"`
 }
 
 // File is the top-level structure of targets.yml.
@@ -114,6 +115,9 @@ func Load(targetName string) (*Target, error) {
 	if v := os.Getenv("S3COMPAT_SKIP_TLS_VERIFY"); v != "" {
 		b, _ := strconv.ParseBool(v)
 		t.SkipTLSVerify = b
+	}
+	if v := os.Getenv("S3COMPAT_CA_CERT"); v != "" {
+		t.CACert = v
 	}
 
 	return &t, nil
