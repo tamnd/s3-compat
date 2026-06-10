@@ -129,9 +129,10 @@ jobs:
             sleep 30
           done
           docker compose -f docker/ceph/docker-compose.yml up -d
-          # Race to patch /etc/ceph/ceph.conf inside the container before OSD creates
-          # pools. The demo script generates this file within the first few seconds;
-          # we poll every 0.5 s and patch as soon as it appears.
+          # Race to patch /etc/ceph/ceph.conf before the MON reads it. The demo
+          # generates this file within the first few seconds; poll every 0.5s and
+          # patch as soon as it appears. mon_allow_pool_size_one must be in the
+          # file when the MON starts, or Ceph Reef refuses size=1 pool creation.
           CNAME=""
           for i in $(seq 1 20); do
             CNAME=$(docker compose -f docker/ceph/docker-compose.yml ps -q ceph 2>/dev/null)
@@ -141,15 +142,15 @@ jobs:
           if [ -n "$CNAME" ]; then
             for i in $(seq 1 40); do
               if docker exec "$CNAME" test -f /etc/ceph/ceph.conf 2>/dev/null; then
-                docker exec "$CNAME" sed -i \
-                  's/osd pool default size = [0-9]*/osd pool default size = 1/' \
-                  /etc/ceph/ceph.conf 2>/dev/null || true
-                docker exec "$CNAME" bash -c \
-                  "grep -q 'osd_pool_default_min_size\|osd pool default min_size' /etc/ceph/ceph.conf \
-                   || echo 'osd_pool_default_min_size = 1' >> /etc/ceph/ceph.conf" \
-                  2>/dev/null || true
-                echo "Patched /etc/ceph/ceph.conf: osd_pool_default_size=1"
-                docker exec "$CNAME" cat /etc/ceph/ceph.conf 2>/dev/null || true
+                docker exec "$CNAME" bash -c '
+                  sed -i "s/osd pool default size = [0-9]*/osd pool default size = 1/" /etc/ceph/ceph.conf
+                  grep -q "osd_pool_default_min_size\|osd pool default min_size" /etc/ceph/ceph.conf \
+                    || echo "osd_pool_default_min_size = 1" >> /etc/ceph/ceph.conf
+                  grep -q "mon_allow_pool_size_one" /etc/ceph/ceph.conf \
+                    || echo "mon_allow_pool_size_one = true" >> /etc/ceph/ceph.conf
+                '
+                echo "Patched /etc/ceph/ceph.conf:"
+                docker exec "$CNAME" cat /etc/ceph/ceph.conf
                 break
               fi
               sleep 0.5
@@ -158,7 +159,6 @@ jobs:
 
       - name: Wait for Ceph RGW
         run: |
-          # Get container ID.
           CNAME=""
           for i in $(seq 1 30); do
             CNAME=$(docker compose -f docker/ceph/docker-compose.yml ps -q ceph 2>/dev/null)
@@ -167,21 +167,23 @@ jobs:
           done
           echo "Container: $CNAME"
 
-          # Step 1: set pool defaults in config DB early.
-          # Ceph Reef disables pool size=1 by default; mon_allow_pool_size_one
-          # must be set first or every 'pool set size 1' gets EPERM.
+          # Step 1: as soon as the MON is reachable, set pool-size config in the
+          # config DB. mon_allow_pool_size_one is also patched into ceph.conf in
+          # "Start ceph"; this is a belt-and-suspenders backup in case we lost
+          # the ceph.conf race.
           for i in $(seq 1 30); do
             if docker exec "$CNAME" ceph mon dump >/dev/null 2>&1; then
-              docker exec "$CNAME" ceph config set global mon_allow_pool_size_one true 2>/dev/null || true
-              docker exec "$CNAME" ceph config set global osd_pool_default_min_size 1 2>/dev/null || true
-              docker exec "$CNAME" ceph config set global osd_pool_default_size 1 2>/dev/null || true
+              docker exec "$CNAME" ceph config set global mon_allow_pool_size_one true
+              docker exec "$CNAME" ceph config set global osd_pool_default_min_size 1
+              docker exec "$CNAME" ceph config set global osd_pool_default_size 1
               echo "Cluster pool defaults set."
               break
             fi
             sleep 2
           done
 
-          # Step 2: wait for demo to create the S3 user.
+          # Step 2: wait for the demo entrypoint to create the S3 user (signals
+          # that pool and user init is done).
           for i in $(seq 1 60); do
             docker exec "$CNAME" radosgw-admin user info --uid=s3test >/dev/null 2>&1 \
               && { echo "Demo complete."; break; }
@@ -189,90 +191,94 @@ jobs:
             sleep 5
           done
 
-          # Step 3: pre-create bucket pools that RGW would otherwise create lazily
-          # on the first CreateBucket call. Lazy creation causes the PGs to go
-          # through creating+peering+unknown for 2-3 minutes; by pre-creating
-          # them now, initialization happens before the probe.
-          for pool in default.rgw.buckets.index default.rgw.buckets.data \
-                      default.rgw.buckets.non-ec; do
-            docker exec "$CNAME" ceph osd pool create "$pool" 8 2>&1 || true
-            docker exec "$CNAME" ceph osd pool application enable "$pool" rgw 2>&1 || true
-          done
-          echo "Bucket pools pre-created."
+          # Step 3: show what pools the demo actually created.
+          echo "=== Pools after demo init ==="
+          docker exec "$CNAME" ceph osd pool ls
+          echo "=== Zone placement (raw) ==="
+          docker exec "$CNAME" radosgw-admin zone get 2>&1 | head -40
 
-          # Step 4: synchronously resize ALL pools to size=1 (4 passes including
-          # the freshly created bucket pools). Set min_size BEFORE size.
-          for pass in 1 2 3 4; do
+          # Step 4: resize all existing pools to size=1 (2 passes, min_size first).
+          # Do NOT pre-create bucket pools — RGW manages those itself; external
+          # pre-creation can leave them in an unrecognized state.
+          for pass in 1 2; do
             echo "--- Resize pass $pass ---"
-            for pool in $(docker exec "$CNAME" ceph osd pool ls 2>/dev/null); do
+            for pool in $(docker exec "$CNAME" ceph osd pool ls); do
               docker exec "$CNAME" ceph osd pool set "$pool" min_size 1 \
                 --yes-i-really-mean-it 2>&1 || true
               docker exec "$CNAME" ceph osd pool set "$pool" size 1 \
                 --yes-i-really-mean-it 2>&1 || true
             done
-            sleep 10
+            sleep 5
           done
+          echo "Pools after resize:"
+          docker exec "$CNAME" ceph osd pool ls
 
-          # Show pool list for debugging.
-          echo "Pools and sizes after resize:"
-          docker exec "$CNAME" ceph osd pool ls detail 2>/dev/null | grep -E "^pool |size [0-9]"
-
-          # Step 5: wait for PGs to stabilize (no unknown/creating/peering).
+          # Step 5: wait for all PGs to leave creating/peering/unknown.
           for i in $(seq 1 60); do
-            health=$(docker exec "$CNAME" ceph health 2>/dev/null)
-            pg_stat=$(docker exec "$CNAME" ceph pg stat 2>/dev/null)
-            echo "Health[$i]: $health"
-            echo "$health" | grep -q "^HEALTH_OK$" && { echo "Cluster HEALTH_OK."; break; }
-            if ! echo "$pg_stat" | grep -qE "unknown|creating|peering"; then
-              echo "PGs stable (no unknown/creating/peering). Proceeding."
+            pg=$(docker exec "$CNAME" ceph pg stat 2>&1)
+            echo "PG[$i]: $pg"
+            if ! echo "$pg" | grep -qE "creating|peering|unknown"; then
+              echo "PGs stable."
               break
             fi
             [ "$i" = "60" ] && echo "WARNING: PGs not stable after timeout, proceeding."
             sleep 3
           done
+          docker exec "$CNAME" ceph health 2>&1 || true
 
-          # Step 6: show diagnostics to understand the zone/pool layout.
-          echo "=== Zone placement config ==="
-          docker exec "$CNAME" radosgw-admin zone get 2>/dev/null \
-            | python3 -c "import json,sys; z=json.load(sys.stdin); [print(p['key'],p['val'].get('index_pool','?'),p['val'].get('data_extra_pool','?')) for p in z.get('placement_pools',[])]" \
-            2>/dev/null || true
-          echo "=== Pool list ==="
-          docker exec "$CNAME" ceph osd pool ls detail 2>/dev/null | grep -E "^pool [0-9]" | awk '{print $3, "size="$5, "min_size="$7}' || true
+          # Step 6: test bucket creation via radosgw-admin (bypasses the S3 HTTP
+          # layer; lets us see a clear error if RGW metadata pools are broken).
+          echo "=== radosgw-admin bucket create probe ==="
+          docker exec "$CNAME" radosgw-admin bucket create \
+            --bucket=s3compat-init --uid=s3test 2>&1 && RADOSGW_OK=1 || RADOSGW_OK=0
+          echo "radosgw-admin bucket create exit: $RADOSGW_OK"
 
-          # Step 7: restart RGW to pick up fresh pool configuration; stale cache
-          # may cause NoSuchBucket even when pools are properly sized.
-          docker exec "$CNAME" pkill -HUP -f radosgw 2>/dev/null || true
-          sleep 15
-          echo "RGW restarted."
+          # Step 7: if radosgw-admin bucket create triggered lazy pool creation,
+          # resize any new pools to size=1 as well.
+          echo "--- Resize pass 3 (post-init pools) ---"
+          for pool in $(docker exec "$CNAME" ceph osd pool ls); do
+            docker exec "$CNAME" ceph osd pool set "$pool" min_size 1 \
+              --yes-i-really-mean-it 2>&1 || true
+            docker exec "$CNAME" ceph osd pool set "$pool" size 1 \
+              --yes-i-really-mean-it 2>&1 || true
+          done
+          sleep 5
 
-          # Step 8: recreate the S3 user.
+          # Step 8: clean up and recreate the S3 user with our test credentials.
+          docker exec "$CNAME" radosgw-admin bucket rm --bucket=s3compat-init --purge-objects 2>&1 || true
           docker exec "$CNAME" radosgw-admin user rm --uid=s3test 2>/dev/null || true
           docker exec "$CNAME" radosgw-admin user create \
             --uid=s3test --display-name="S3Test" \
             --access-key=cephtest --secret-key=cephtestsecret \
           && echo "S3 user created." || { echo "User create failed." >&2; exit 1; }
 
-          # Step 9: verify S3 via boto3 — CreateBucket + DeleteBucket to confirm
-          # pools are accessible. On first 3 failures, dump diagnostics.
+          # Step 9: verify S3 via boto3 — CreateBucket + DeleteBucket.
           pip3 install boto3 -q 2>/dev/null || true
+          cat > /tmp/ceph_probe.py << 'PYEOF'
+          import boto3, botocore, sys
+          s3 = boto3.client('s3', endpoint_url='http://localhost:7480',
+              aws_access_key_id='cephtest', aws_secret_access_key='cephtestsecret',
+              region_name='us-east-1')
+          try:
+              s3.create_bucket(Bucket='s3compat-probe')
+              s3.delete_bucket(Bucket='s3compat-probe')
+              print('S3 probe OK')
+          except botocore.exceptions.ClientError as e:
+              print('S3 error:', e.response.get('Error', {}))
+              sys.exit(1)
+          PYEOF
           for i in $(seq 1 60); do
             echo "boto3 probe[$i]..."
-            if python3 -c "import boto3; s3=boto3.client('s3',endpoint_url='http://localhost:7480',aws_access_key_id='cephtest',aws_secret_access_key='cephtestsecret',region_name='us-east-1'); s3.create_bucket(Bucket='s3compat-probe'); s3.delete_bucket(Bucket='s3compat-probe'); print('S3 probe OK')" 2>&1; then
+            if python3 /tmp/ceph_probe.py 2>&1; then
               echo "Ceph RGW S3 operational."
               exit 0
-            fi
-            if [ "$i" -le 3 ]; then
-              echo "--- RGW log on probe failure ---"
-              docker exec "$CNAME" tail -20 /var/log/ceph/ceph-client.rgw.*.log 2>/dev/null \
-                | grep -iE "bucket|create|error|warn|fail" | head -20 || true
-              echo "--- ceph health detail ---"
-              docker exec "$CNAME" ceph health detail 2>/dev/null || true
             fi
             sleep 5
           done
           echo "Ceph RGW S3 did not become operational." >&2
-          docker exec "$CNAME" ceph health detail 2>/dev/null || true
-          docker compose -f docker/ceph/docker-compose.yml logs
+          docker exec "$CNAME" ceph health detail 2>&1 || true
+          docker exec "$CNAME" radosgw-admin bucket list --uid=s3test 2>&1 || true
+          docker compose -f docker/ceph/docker-compose.yml logs --tail=100
           exit 1
 
       - name: Run tests
