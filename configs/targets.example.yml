@@ -166,7 +166,7 @@ targets:
       list_multipart: true
 
   ceph:
-    endpoint: http://localhost:7480
+    endpoint: http://127.0.0.1:7480
     ca_cert: ""
     access_key: cephtest
     secret_key: cephtestsecret
