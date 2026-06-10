@@ -148,8 +148,6 @@ jobs:
                     || echo "osd_pool_default_min_size = 1" >> /etc/ceph/ceph.conf
                   grep -q "mon_allow_pool_size_one" /etc/ceph/ceph.conf \
                     || echo "mon_allow_pool_size_one = true" >> /etc/ceph/ceph.conf
-                  grep -q "rgw relaxed s3 bucket acls" /etc/ceph/ceph.conf \
-                    || echo "rgw relaxed s3 bucket acls = true" >> /etc/ceph/ceph.conf
                 '
                 echo "Patched /etc/ceph/ceph.conf:"
                 docker exec "$CNAME" cat /etc/ceph/ceph.conf
@@ -178,7 +176,6 @@ jobs:
               docker exec "$CNAME" ceph config set global mon_allow_pool_size_one true
               docker exec "$CNAME" ceph config set global osd_pool_default_min_size 1
               docker exec "$CNAME" ceph config set global osd_pool_default_size 1
-              docker exec "$CNAME" ceph config set client.rgw rgw_relaxed_s3_bucket_acls true
               echo "Cluster pool defaults set."
               break
             fi

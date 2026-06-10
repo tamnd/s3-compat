@@ -68,14 +68,10 @@ func TestPutBucketACLPublicRead(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = client.S3.PutObject(ctx, &s3.PutObjectInput{
-		Bucket: aws.String(bucket),
-		Key:    aws.String("test-acl.txt"),
-		Body:   bytes.NewReader([]byte("public content")),
-	})
-	require.NoError(t, err)
-
-	url := objectURL(bucket, "test-acl.txt")
+	// public-read on a bucket grants AllUsers READ (s3:ListBucket). Verify that
+	// an unauthenticated GET on the bucket endpoint returns 200 (anonymous listing).
+	endpoint := strings.TrimRight(client.Target.Endpoint, "/")
+	url := endpoint + "/" + bucket
 	hreq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	require.NoError(t, err)
 	resp, err := client.HTTPClient.Do(hreq)
