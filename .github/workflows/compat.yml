@@ -28,7 +28,13 @@ jobs:
         run: bash scripts/gen-certs.sh
 
       - name: Start ${{ matrix.target }}
-        run: docker compose -f docker/${{ matrix.target }}/docker-compose.yml up -d
+        run: |
+          for i in 1 2 3; do
+            docker compose -f docker/${{ matrix.target }}/docker-compose.yml pull && break
+            echo "Pull attempt $i failed, retrying in 15s..."
+            sleep 15
+          done
+          docker compose -f docker/${{ matrix.target }}/docker-compose.yml up -d
 
       - name: Wait for ${{ matrix.target }} to be healthy
         env:
@@ -114,7 +120,13 @@ jobs:
           cache: true
 
       - name: Start ceph
-        run: docker compose -f docker/ceph/docker-compose.yml up -d
+        run: |
+          for i in 1 2 3; do
+            docker compose -f docker/ceph/docker-compose.yml pull && break
+            echo "Pull attempt $i failed, retrying in 15s..."
+            sleep 15
+          done
+          docker compose -f docker/ceph/docker-compose.yml up -d
 
       - name: Wait for Ceph RGW
         run: |
