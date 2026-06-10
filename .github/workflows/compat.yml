@@ -132,60 +132,65 @@ jobs:
 
       - name: Wait for Ceph RGW
         run: |
-          CNAME=$(docker compose -f docker/ceph/docker-compose.yml ps -q ceph)
-          # Step 1: set pool defaults in the config DB as soon as the monitor is up,
-          # before OSD / RGW create any pools.
+          # Retry getting CNAME until the container is running.
+          for i in $(seq 1 30); do
+            CNAME=$(docker compose -f docker/ceph/docker-compose.yml ps -q ceph 2>/dev/null)
+            [ -n "$CNAME" ] && break
+            sleep 2
+          done
+          echo "Container: $CNAME"
+          # Step 1: set pool defaults in the config DB as early as possible.
           for i in $(seq 1 30); do
             if docker exec "$CNAME" ceph mon dump >/dev/null 2>&1; then
               docker exec "$CNAME" ceph config set global osd_pool_default_min_size 1 2>/dev/null || true
               docker exec "$CNAME" ceph config set global osd_pool_default_size 1 2>/dev/null || true
-              echo "Cluster pool defaults set to size=1."
+              echo "Cluster pool defaults set."
               break
             fi
             sleep 2
           done
-          # Step 2: wait for the demo script to finish (S3 user created = SUCCESS line).
+          # Step 2: launch a background pool-resizer INSIDE the container so that
+          # every pool (including those RGW creates lazily after SUCCESS) gets size=1.
+          docker exec -d "$CNAME" bash -c '
+            while true; do
+              for pool in $(ceph osd pool ls 2>/dev/null); do
+                ceph osd pool set "$pool" size 1 --yes-i-really-mean-it 2>/dev/null || true
+                ceph osd pool set "$pool" min_size 1 2>/dev/null || true
+              done
+              sleep 4
+            done
+          ' 2>/dev/null || true
+          echo "Background pool resizer started."
+          # Step 3: wait for demo to create the S3 user (more reliable than log grep).
           for i in $(seq 1 60); do
-            if docker compose -f docker/ceph/docker-compose.yml logs ceph 2>/dev/null | grep -q "SUCCESS"; then
-              echo "Ceph demo script completed."
-              break
-            fi
-            [ "$i" = "60" ] && { echo "Ceph demo did not complete in time." >&2; docker compose -f docker/ceph/docker-compose.yml logs; exit 1; }
+            docker exec "$CNAME" radosgw-admin user info --uid=s3test >/dev/null 2>&1 \
+              && { echo "S3 user exists — demo complete."; break; }
+            [ "$i" = "60" ] && { echo "Demo timed out." >&2; docker compose -f docker/ceph/docker-compose.yml logs; exit 1; }
             sleep 5
           done
-          # Step 3: resize all pools created before the config DB change took effect.
-          # Repeat in a short loop to also catch pools RGW creates lazily post-SUCCESS.
-          for i in $(seq 1 30); do
-            for pool in $(docker exec "$CNAME" ceph osd pool ls 2>/dev/null); do
-              docker exec "$CNAME" ceph osd pool set "$pool" size 1 --yes-i-really-mean-it 2>/dev/null || true
-              docker exec "$CNAME" ceph osd pool set "$pool" min_size 1 2>/dev/null || true
-            done
+          # Step 4: wait for HEALTH_OK (pool resizer handles any new pools).
+          for i in $(seq 1 60); do
             docker exec "$CNAME" ceph health 2>/dev/null | grep -q "^HEALTH_OK$" && { echo "Ceph cluster HEALTH_OK."; break; }
+            [ "$i" = "60" ] && echo "WARNING: cluster not HEALTH_OK after 3 min, proceeding."
             sleep 3
           done
-          # Step 4: recreate the S3 user so it is written into the now-stable pools.
-          # The user may have been created while pools were degraded; a fresh write
-          # ensures RGW can read the user metadata reliably.
+          # Step 5: recreate the S3 user in the now-stable pools.
           docker exec "$CNAME" radosgw-admin user rm --uid=s3test 2>/dev/null || true
           docker exec "$CNAME" radosgw-admin user create \
-            --uid=s3test \
-            --display-name="S3Test" \
-            --access-key=cephtest \
-            --secret-key=cephtestsecret 2>/dev/null \
-          && echo "S3 user recreated." || echo "WARNING: user creation failed, proceeding."
-          # Step 5: verify S3 is actually operational with ListBuckets before handing off.
+            --uid=s3test --display-name="S3Test" \
+            --access-key=cephtest --secret-key=cephtestsecret 2>/dev/null \
+          && echo "S3 user recreated." || echo "WARNING: user create failed."
+          # Step 6: verify S3 actually works (ListBuckets via AWS CLI).
           for i in $(seq 1 30); do
-            if AWS_DEFAULT_REGION=us-east-1 \
-               AWS_ACCESS_KEY_ID=cephtest \
-               AWS_SECRET_ACCESS_KEY=cephtestsecret \
-               aws --endpoint-url http://localhost:7480 s3 ls 2>/dev/null; then
-              echo "Ceph RGW S3 is operational."
-              exit 0
-            fi
+            AWS_DEFAULT_REGION=us-east-1 \
+            AWS_ACCESS_KEY_ID=cephtest \
+            AWS_SECRET_ACCESS_KEY=cephtestsecret \
+            aws --endpoint-url http://localhost:7480 s3 ls 2>/dev/null \
+              && { echo "Ceph RGW S3 operational."; exit 0; }
             sleep 3
           done
-          echo "Ceph RGW S3 did not become operational in time." >&2
-          docker exec "$CNAME" ceph health 2>/dev/null || true
+          echo "Ceph RGW S3 did not become operational." >&2
+          docker exec "$CNAME" ceph health detail 2>/dev/null || true
           docker compose -f docker/ceph/docker-compose.yml logs
           exit 1
 
