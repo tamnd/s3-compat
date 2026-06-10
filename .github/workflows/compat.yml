@@ -256,9 +256,11 @@ jobs:
           pip3 install boto3 -q 2>/dev/null || true
           cat > /tmp/ceph_probe.py << 'PYEOF'
           import boto3, botocore, sys
+          from botocore.config import Config
           s3 = boto3.client('s3', endpoint_url='http://localhost:7480',
               aws_access_key_id='cephtest', aws_secret_access_key='cephtestsecret',
-              region_name='us-east-1')
+              region_name='us-east-1',
+              config=Config(s3={'addressing_style': 'path'}))
           try:
               s3.create_bucket(Bucket='s3compat-probe')
               s3.delete_bucket(Bucket='s3compat-probe')
