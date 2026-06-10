@@ -116,7 +116,7 @@ func main() {
 				result[target][feat] = ev.Action
 			}
 		}
-		f.Close()
+		_ = f.Close()
 	}
 
 	sort.Strings(targets)
