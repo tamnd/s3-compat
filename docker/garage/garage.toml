@@ -12,8 +12,6 @@ rpc_secret = "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
 s3_region = "garage"
 api_bind_addr = "[::]:3900"
 root_domain = ".s3.garage.localhost"
-tls_certificate_file = "/certs/server.crt"
-tls_private_key_file = "/certs/server.key"
 
 [s3_web]
 bind_addr = "[::]:3902"

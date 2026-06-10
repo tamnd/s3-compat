@@ -40,8 +40,9 @@ jobs:
       - name: Run tests
         env:
           S3COMPAT_TARGET: ${{ matrix.target }}
-          S3COMPAT_CA_CERT: certs/ca.crt
-        run: go test ./... -v -timeout 300s -json | tee results-${{ matrix.target }}.json
+        run: |
+          set -o pipefail
+          go test ./... -v -timeout 300s -json | tee results-${{ matrix.target }}.json
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -60,22 +61,21 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Generate TLS certs
-        run: bash scripts/gen-certs.sh
-
       - name: Start garage
         run: docker compose -f docker/garage/docker-compose.yml up -d
 
       - name: Wait for garage admin API
         run: |
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:3903/health; then
-              echo "Garage is healthy."
+          for i in $(seq 1 40); do
+            # Accept any HTTP response (including 503 before layout is assigned).
+            if curl -so /dev/null http://localhost:3903/health; then
+              echo "Garage admin API is reachable."
               exit 0
             fi
             sleep 3
           done
-          echo "Garage did not become healthy in time." >&2
+          echo "Garage did not become reachable in time." >&2
+          docker compose -f docker/garage/docker-compose.yml logs
           exit 1
 
       - name: Initialize garage
@@ -84,17 +84,16 @@ jobs:
       - name: Run tests
         env:
           S3COMPAT_TARGET: garage
-          S3COMPAT_CA_CERT: certs/ca.crt
           S3COMPAT_ACCESS_KEY_FILE: /tmp/garage-key-id
           S3COMPAT_SECRET_KEY_FILE: /tmp/garage-key-secret
         run: |
           cp configs/targets.example.yml configs/targets.yml
+          set -o pipefail
           KEY_ID=$(cat /tmp/garage-key-id)
           KEY_SECRET=$(cat /tmp/garage-key-secret)
           S3COMPAT_TARGET=garage \
           S3COMPAT_ACCESS_KEY="$KEY_ID" \
           S3COMPAT_SECRET_KEY="$KEY_SECRET" \
-          S3COMPAT_CA_CERT=certs/ca.crt \
           go test ./... -v -timeout 300s -json | tee results-garage.json
 
       - uses: actions/upload-artifact@v4

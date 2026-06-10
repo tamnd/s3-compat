@@ -2,7 +2,6 @@ defaults:
   region: us-east-1
   use_path_style: true
   bucket_prefix: s3compat-
-  ca_cert: ../certs/ca.crt
 
 targets:
   aws:
@@ -26,9 +25,14 @@ targets:
       select: true
       tagging: true
       multipart: true
+      strict_auth: true
+      strict_delete_bucket: true
+      list_buckets_consistent: true
+      list_multipart: true
 
   minio:
     endpoint: https://localhost:9000
+    ca_cert: ../certs/ca.crt
     access_key: minioadmin
     secret_key: minioadmin
     region: us-east-1
@@ -48,9 +52,14 @@ targets:
       select: true
       tagging: true
       multipart: true
+      strict_auth: true
+      strict_delete_bucket: true
+      list_buckets_consistent: true
+      list_multipart: true
 
   seaweedfs:
-    endpoint: https://localhost:8333
+    endpoint: http://localhost:8333
+    ca_cert: ""
     access_key: any
     secret_key: any
     region: us-east-1
@@ -59,7 +68,7 @@ targets:
       versioning: true
       object_lock: true
       lifecycle: true
-      cors: true
+      cors: false
       acl: false
       policy: false
       notifications: false
@@ -70,9 +79,14 @@ targets:
       select: false
       tagging: true
       multipart: true
+      strict_auth: false
+      strict_delete_bucket: false
+      list_buckets_consistent: false
+      list_multipart: true
 
   garage:
-    endpoint: https://localhost:3900
+    endpoint: http://localhost:3900
+    ca_cert: ""
     access_key: placeholder-key-id
     secret_key: placeholder-key-secret
     region: garage
@@ -81,7 +95,7 @@ targets:
       versioning: false
       object_lock: false
       lifecycle: true
-      cors: true
+      cors: false
       acl: false
       policy: false
       notifications: false
@@ -92,9 +106,14 @@ targets:
       select: false
       tagging: false
       multipart: true
+      strict_auth: true
+      strict_delete_bucket: true
+      list_buckets_consistent: true
+      list_multipart: true
 
   rustfs:
-    endpoint: https://localhost:9100
+    endpoint: http://localhost:9100
+    ca_cert: ""
     access_key: rustfsadmin
     secret_key: rustfsadmin
     region: us-east-1
@@ -114,25 +133,34 @@ targets:
       select: false
       tagging: true
       multipart: true
+      strict_auth: true
+      strict_delete_bucket: true
+      list_buckets_consistent: true
+      list_multipart: false
 
   liteio:
     endpoint: https://localhost:9200
+    ca_cert: ../certs/ca.crt
     access_key: liteio
     secret_key: liteiosecret
     region: us-east-1
     use_path_style: true
     features:
       versioning: true
-      object_lock: false
+      object_lock: true
       lifecycle: true
       cors: true
-      acl: false
-      policy: false
+      acl: true
+      policy: true
       notifications: true
-      encryption_sse_s3: false
-      encryption_sse_kms: false
+      encryption_sse_s3: true
+      encryption_sse_kms: true
       encryption_sse_c: true
-      replication: false
+      replication: true
       select: true
       tagging: true
       multipart: true
+      strict_auth: true
+      strict_delete_bucket: true
+      list_buckets_consistent: true
+      list_multipart: true

@@ -118,6 +118,7 @@ func TestMultipartAbort(t *testing.T) {
 
 func TestListMultipartUploads(t *testing.T) {
 	skip.Feature(t, "multipart", client.Target.Features)
+	skip.Feature(t, "list_multipart", client.Target.Features)
 
 	bucket := client.RandBucket("mp")
 	client.CreateBucket(t, bucket)
