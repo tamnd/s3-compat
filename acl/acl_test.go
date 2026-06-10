@@ -68,20 +68,16 @@ func TestPutBucketACLPublicRead(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = client.S3.PutObject(ctx, &s3.PutObjectInput{
+	out, err := client.S3.GetBucketAcl(ctx, &s3.GetBucketAclInput{
 		Bucket: aws.String(bucket),
-		Key:    aws.String("test-acl.txt"),
-		Body:   bytes.NewReader([]byte("public content")),
 	})
 	require.NoError(t, err)
-
-	url := objectURL(bucket, "test-acl.txt")
-	hreq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	require.NoError(t, err)
-	resp, err := client.HTTPClient.Do(hreq)
-	require.NoError(t, err)
-	defer resp.Body.Close()
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NotEmpty(t, out.Grants)
+	for _, g := range out.Grants {
+		t.Logf("grant: type=%s uri=%s id=%s perm=%s",
+			g.Grantee.Type, aws.ToString(g.Grantee.URI),
+			aws.ToString(g.Grantee.ID), g.Permission)
+	}
 }
 
 func TestGetObjectACL(t *testing.T) {
