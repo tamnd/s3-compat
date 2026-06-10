@@ -338,5 +338,3 @@ jobs:
           cache: true
 
       - uses: golangci/golangci-lint-action@v9
-        with:
-          version: v1.64.8
