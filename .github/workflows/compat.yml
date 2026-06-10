@@ -217,32 +217,56 @@ jobs:
           echo "Pools and sizes after resize:"
           docker exec "$CNAME" ceph osd pool ls detail 2>/dev/null | grep -E "^pool |size [0-9]"
 
-          # Step 5: wait for HEALTH_OK — all PGs (including the pre-created bucket
-          # pools) must be active+clean before we proceed.
-          for i in $(seq 1 90); do
+          # Step 5: wait for PGs to stabilize (no unknown/creating/peering).
+          for i in $(seq 1 60); do
             health=$(docker exec "$CNAME" ceph health 2>/dev/null)
+            pg_stat=$(docker exec "$CNAME" ceph pg stat 2>/dev/null)
             echo "Health[$i]: $health"
             echo "$health" | grep -q "^HEALTH_OK$" && { echo "Cluster HEALTH_OK."; break; }
-            [ "$i" = "90" ] && echo "WARNING: HEALTH_WARN after timeout, proceeding."
+            if ! echo "$pg_stat" | grep -qE "unknown|creating|peering"; then
+              echo "PGs stable (no unknown/creating/peering). Proceeding."
+              break
+            fi
+            [ "$i" = "60" ] && echo "WARNING: PGs not stable after timeout, proceeding."
             sleep 3
           done
 
-          # Step 6: recreate the S3 user.
+          # Step 6: show diagnostics to understand the zone/pool layout.
+          echo "=== Zone placement config ==="
+          docker exec "$CNAME" radosgw-admin zone get 2>/dev/null \
+            | python3 -c "import json,sys; z=json.load(sys.stdin); [print(p['key'],p['val'].get('index_pool','?'),p['val'].get('data_extra_pool','?')) for p in z.get('placement_pools',[])]" \
+            2>/dev/null || true
+          echo "=== Pool list ==="
+          docker exec "$CNAME" ceph osd pool ls detail 2>/dev/null | grep -E "^pool [0-9]" | awk '{print $3, "size="$5, "min_size="$7}' || true
+
+          # Step 7: restart RGW to pick up fresh pool configuration; stale cache
+          # may cause NoSuchBucket even when pools are properly sized.
+          docker exec "$CNAME" pkill -HUP -f radosgw 2>/dev/null || true
+          sleep 15
+          echo "RGW restarted."
+
+          # Step 8: recreate the S3 user.
           docker exec "$CNAME" radosgw-admin user rm --uid=s3test 2>/dev/null || true
           docker exec "$CNAME" radosgw-admin user create \
             --uid=s3test --display-name="S3Test" \
             --access-key=cephtest --secret-key=cephtestsecret \
           && echo "S3 user created." || { echo "User create failed." >&2; exit 1; }
 
-          # Step 7: verify S3 via boto3 — CreateBucket + DeleteBucket to confirm
-          # pools are accessible. Use 'if python3' (not 'out=$(python3)') to avoid
-          # bash set -e exiting on first failure before retries.
+          # Step 9: verify S3 via boto3 — CreateBucket + DeleteBucket to confirm
+          # pools are accessible. On first 3 failures, dump diagnostics.
           pip3 install boto3 -q 2>/dev/null || true
           for i in $(seq 1 60); do
             echo "boto3 probe[$i]..."
             if python3 -c "import boto3; s3=boto3.client('s3',endpoint_url='http://localhost:7480',aws_access_key_id='cephtest',aws_secret_access_key='cephtestsecret',region_name='us-east-1'); s3.create_bucket(Bucket='s3compat-probe'); s3.delete_bucket(Bucket='s3compat-probe'); print('S3 probe OK')" 2>&1; then
               echo "Ceph RGW S3 operational."
               exit 0
+            fi
+            if [ "$i" -le 3 ]; then
+              echo "--- RGW log on probe failure ---"
+              docker exec "$CNAME" tail -20 /var/log/ceph/ceph-client.rgw.*.log 2>/dev/null \
+                | grep -iE "bucket|create|error|warn|fail" | head -20 || true
+              echo "--- ceph health detail ---"
+              docker exec "$CNAME" ceph health detail 2>/dev/null || true
             fi
             sleep 5
           done
