@@ -17,9 +17,9 @@ jobs:
       matrix:
         target: [minio, seaweedfs, rustfs, localstack, liteio]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
@@ -51,7 +51,7 @@ jobs:
           set -o pipefail
           go test ./... -v -timeout 300s -json | tee results-${{ matrix.target }}.json
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: results-${{ matrix.target }}
@@ -61,9 +61,9 @@ jobs:
     name: test (garage)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
@@ -103,7 +103,7 @@ jobs:
           S3COMPAT_SECRET_KEY="$KEY_SECRET" \
           go test ./... -v -timeout 300s -json | tee results-garage.json
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: results-garage
@@ -113,9 +113,9 @@ jobs:
     name: test (ceph)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
@@ -293,7 +293,7 @@ jobs:
           set -o pipefail
           go test ./... -v -timeout 300s -json | tee results-ceph.json
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: results-ceph
@@ -305,14 +305,14 @@ jobs:
     if: always()
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: results-*
           merge-multiple: true
@@ -320,7 +320,7 @@ jobs:
       - name: Generate matrix
         run: go run ./scripts/gen-matrix results-*.json > COMPAT.md
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: COMPAT.md
           path: COMPAT.md
@@ -329,13 +329,11 @@ jobs:
     name: lint
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
 
-      - uses: golangci/golangci-lint-action@v6
-        with:
-          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v9

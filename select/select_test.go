@@ -58,7 +58,7 @@ func TestSelectCSV(t *testing.T) {
 	require.NoError(t, err)
 
 	stream := out.GetStream()
-	defer stream.Close()
+	defer stream.Close() //nolint:errcheck
 
 	var buf strings.Builder
 	for event := range stream.Events() {
