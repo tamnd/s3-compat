@@ -189,9 +189,19 @@ jobs:
             sleep 5
           done
 
-          # Step 3: synchronously resize ALL pools to size=1. Run 4 passes with
-          # delays to catch any pools the demo creates lazily after SUCCESS.
-          # Set min_size BEFORE size (Ceph requires size >= min_size).
+          # Step 3: pre-create bucket pools that RGW would otherwise create lazily
+          # on the first CreateBucket call. Lazy creation causes the PGs to go
+          # through creating+peering+unknown for 2-3 minutes; by pre-creating
+          # them now, initialization happens before the probe.
+          for pool in default.rgw.buckets.index default.rgw.buckets.data \
+                      default.rgw.buckets.non-ec; do
+            docker exec "$CNAME" ceph osd pool create "$pool" 8 2>&1 || true
+            docker exec "$CNAME" ceph osd pool application enable "$pool" rgw 2>&1 || true
+          done
+          echo "Bucket pools pre-created."
+
+          # Step 4: synchronously resize ALL pools to size=1 (4 passes including
+          # the freshly created bucket pools). Set min_size BEFORE size.
           for pass in 1 2 3 4; do
             echo "--- Resize pass $pass ---"
             for pool in $(docker exec "$CNAME" ceph osd pool ls 2>/dev/null); do
@@ -203,34 +213,32 @@ jobs:
             sleep 10
           done
 
-          # Show pool dump for debugging.
-          echo "Pool sizes after resize:"
-          docker exec "$CNAME" ceph osd dump 2>/dev/null \
-            | awk '/^pool / {print $3, "size="$NR, $0}' | grep -oP "pool '\K[^']+(?=')|size [0-9]+" \
-            || docker exec "$CNAME" ceph osd pool ls detail 2>/dev/null | grep -E "size|min_size"
+          # Show pool list for debugging.
+          echo "Pools and sizes after resize:"
+          docker exec "$CNAME" ceph osd pool ls detail 2>/dev/null | grep -E "^pool |size [0-9]"
 
-          # Step 4: wait for HEALTH_OK.
-          for i in $(seq 1 60); do
+          # Step 5: wait for HEALTH_OK — all PGs (including the pre-created bucket
+          # pools) must be active+clean before we proceed.
+          for i in $(seq 1 90); do
             health=$(docker exec "$CNAME" ceph health 2>/dev/null)
             echo "Health[$i]: $health"
             echo "$health" | grep -q "^HEALTH_OK$" && { echo "Cluster HEALTH_OK."; break; }
-            [ "$i" = "60" ] && echo "WARNING: HEALTH_WARN after timeout, proceeding."
+            [ "$i" = "90" ] && echo "WARNING: HEALTH_WARN after timeout, proceeding."
             sleep 3
           done
 
-          # Step 5: recreate the S3 user.
+          # Step 6: recreate the S3 user.
           docker exec "$CNAME" radosgw-admin user rm --uid=s3test 2>/dev/null || true
           docker exec "$CNAME" radosgw-admin user create \
             --uid=s3test --display-name="S3Test" \
             --access-key=cephtest --secret-key=cephtestsecret \
           && echo "S3 user created." || { echo "User create failed." >&2; exit 1; }
 
-          # Step 6: verify S3 via boto3 — test BOTH ListBuckets and CreateBucket
-          # so we catch pool-accessibility issues before the full test suite runs.
-          # Use 'if python3 ...' not 'out=$(python3 ...)' to avoid set -e exiting
-          # on the first failure before retries can run.
+          # Step 7: verify S3 via boto3 — CreateBucket + DeleteBucket to confirm
+          # pools are accessible. Use 'if python3' (not 'out=$(python3)') to avoid
+          # bash set -e exiting on first failure before retries.
           pip3 install boto3 -q 2>/dev/null || true
-          for i in $(seq 1 30); do
+          for i in $(seq 1 60); do
             echo "boto3 probe[$i]..."
             if python3 -c "import boto3; s3=boto3.client('s3',endpoint_url='http://localhost:7480',aws_access_key_id='cephtest',aws_secret_access_key='cephtestsecret',region_name='us-east-1'); s3.create_bucket(Bucket='s3compat-probe'); s3.delete_bucket(Bucket='s3compat-probe'); print('S3 probe OK')" 2>&1; then
               echo "Ceph RGW S3 operational."
