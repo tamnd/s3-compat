@@ -227,11 +227,15 @@ jobs:
 
           # Step 6: verify S3 via boto3 — test BOTH ListBuckets and CreateBucket
           # so we catch pool-accessibility issues before the full test suite runs.
+          # Use 'if python3 ...' not 'out=$(python3 ...)' to avoid set -e exiting
+          # on the first failure before retries can run.
           pip3 install boto3 -q 2>/dev/null || true
           for i in $(seq 1 30); do
-            out=$(python3 -c "import boto3,sys; s3=boto3.client('s3',endpoint_url='http://localhost:7480',aws_access_key_id='cephtest',aws_secret_access_key='cephtestsecret',region_name='us-east-1'); s3.create_bucket(Bucket='s3compat-probe'); s3.delete_bucket(Bucket='s3compat-probe'); print('S3 probe OK')" 2>&1)
-            echo "boto3 probe[$i]: $out"
-            echo "$out" | grep -q "S3 probe OK" && { echo "Ceph RGW S3 operational."; exit 0; }
+            echo "boto3 probe[$i]..."
+            if python3 -c "import boto3; s3=boto3.client('s3',endpoint_url='http://localhost:7480',aws_access_key_id='cephtest',aws_secret_access_key='cephtestsecret',region_name='us-east-1'); s3.create_bucket(Bucket='s3compat-probe'); s3.delete_bucket(Bucket='s3compat-probe'); print('S3 probe OK')" 2>&1; then
+              echo "Ceph RGW S3 operational."
+              exit 0
+            fi
             sleep 5
           done
           echo "Ceph RGW S3 did not become operational." >&2
