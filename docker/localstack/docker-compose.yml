@@ -2,7 +2,7 @@ version: "3.9"
 
 services:
   localstack:
-    image: ghcr.io/localstack/localstack:3.8
+    image: public.ecr.aws/localstack/localstack:3.8
     ports:
       - "4566:4566"
     environment:
