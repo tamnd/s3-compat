@@ -132,33 +132,43 @@ jobs:
 
       - name: Wait for Ceph RGW
         run: |
-          # Wait for the demo script to finish (SUCCESS appears in logs).
+          CNAME=$(docker compose -f docker/ceph/docker-compose.yml ps -q ceph)
+          # As soon as the monitor is reachable, override the cluster-wide pool
+          # default so pools RGW creates later also get size=1.
           for i in $(seq 1 60); do
+            if docker exec "$CNAME" ceph mon dump >/dev/null 2>&1; then
+              docker exec "$CNAME" ceph config set global osd_pool_default_size 1 2>/dev/null || true
+              docker exec "$CNAME" ceph config set global osd_pool_default_min_size 1 2>/dev/null || true
+              echo "Cluster config set to size=1."
+              break
+            fi
+            sleep 2
+          done
+          # Wait for the demo script to complete (RGW user created = SUCCESS).
+          for i in $(seq 1 120); do
             if docker compose -f docker/ceph/docker-compose.yml logs ceph 2>/dev/null | grep -q "SUCCESS"; then
               echo "Ceph demo script completed."
               break
             fi
-            [ "$i" = "60" ] && { echo "Ceph demo did not complete in time." >&2; docker compose -f docker/ceph/docker-compose.yml logs; exit 1; }
-            sleep 5
-          done
-          # Resize all pools to size 1 so the single-OSD cluster can serve them.
-          CNAME=$(docker compose -f docker/ceph/docker-compose.yml ps -q ceph)
-          for pool in $(docker exec "$CNAME" ceph osd pool ls 2>/dev/null); do
-            docker exec "$CNAME" ceph osd pool set "$pool" size 1 --yes-i-really-mean-it 2>/dev/null || true
-            docker exec "$CNAME" ceph osd pool set "$pool" min_size 1 2>/dev/null || true
-          done
-          echo "Pool sizes set to 1."
-          # Wait for all PGs to become active (no creating/peering/unknown states).
-          # This is needed before RGW can serve S3 requests reliably.
-          for i in $(seq 1 60); do
-            pg_out=$(docker exec "$CNAME" ceph -s 2>/dev/null)
-            if ! echo "$pg_out" | grep -qE " creating| unknown"; then
-              echo "Ceph PGs active."
-              break
-            fi
+            [ "$i" = "120" ] && { echo "Ceph demo did not complete in time." >&2; docker compose -f docker/ceph/docker-compose.yml logs; exit 1; }
             sleep 3
           done
-          # Final RGW HTTP check (403 on unauthenticated GET / is fine — RGW is up).
+          # Loop: resize any pool still at size>1 and check for HEALTH_OK.
+          # RGW creates pools lazily after SUCCESS, so we keep scanning until all
+          # pools are at size=1 and the cluster reports HEALTH_OK.
+          for i in $(seq 1 120); do
+            for pool in $(docker exec "$CNAME" ceph osd pool ls 2>/dev/null); do
+              docker exec "$CNAME" ceph osd pool set "$pool" size 1 --yes-i-really-mean-it 2>/dev/null || true
+              docker exec "$CNAME" ceph osd pool set "$pool" min_size 1 2>/dev/null || true
+            done
+            if docker exec "$CNAME" ceph health 2>/dev/null | grep -q "^HEALTH_OK$"; then
+              echo "Ceph cluster HEALTH_OK."
+              break
+            fi
+            [ "$i" = "120" ] && echo "WARNING: cluster not HEALTH_OK after resize loop, proceeding anyway."
+            sleep 3
+          done
+          # Final HTTP check — RGW returns 403 for unauthenticated requests; that is fine.
           for i in $(seq 1 60); do
             code=$(curl -so /dev/null -w '%{http_code}' http://localhost:7480 2>/dev/null)
             if [ "$code" -ge 200 ] 2>/dev/null; then
