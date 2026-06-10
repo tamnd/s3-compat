@@ -29,10 +29,11 @@ jobs:
 
       - name: Start ${{ matrix.target }}
         run: |
-          for i in 1 2 3; do
+          for i in 1 2 3 4 5; do
             docker compose -f docker/${{ matrix.target }}/docker-compose.yml pull && break
-            echo "Pull attempt $i failed, retrying in 15s..."
-            sleep 15
+            [ "$i" = "5" ] && { echo "All pull attempts failed." >&2; exit 1; }
+            echo "Pull attempt $i failed, retrying in 30s..."
+            sleep 30
           done
           docker compose -f docker/${{ matrix.target }}/docker-compose.yml up -d
 
@@ -121,10 +122,11 @@ jobs:
 
       - name: Start ceph
         run: |
-          for i in 1 2 3; do
+          for i in 1 2 3 4 5; do
             docker compose -f docker/ceph/docker-compose.yml pull && break
-            echo "Pull attempt $i failed, retrying in 15s..."
-            sleep 15
+            [ "$i" = "5" ] && { echo "All pull attempts failed." >&2; exit 1; }
+            echo "Pull attempt $i failed, retrying in 30s..."
+            sleep 30
           done
           docker compose -f docker/ceph/docker-compose.yml up -d
 
