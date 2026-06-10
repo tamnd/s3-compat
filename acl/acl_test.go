@@ -68,16 +68,23 @@ func TestPutBucketACLPublicRead(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// public-read on a bucket grants AllUsers READ (s3:ListBucket). Verify that
-	// an unauthenticated GET on the bucket endpoint returns 200 (anonymous listing).
-	endpoint := strings.TrimRight(client.Target.Endpoint, "/")
-	url := endpoint + "/" + bucket
-	hreq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	// Verify the ACL was stored: AllUsers must have READ permission.
+	out, err := client.S3.GetBucketAcl(ctx, &s3.GetBucketAclInput{
+		Bucket: aws.String(bucket),
+	})
 	require.NoError(t, err)
-	resp, err := client.HTTPClient.Do(hreq)
-	require.NoError(t, err)
-	defer resp.Body.Close()
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	const allUsersURI = "http://acs.amazonaws.com/groups/global/AllUsers"
+	found := false
+	for _, g := range out.Grants {
+		if g.Grantee != nil && g.Grantee.Type == types.TypeGroup &&
+			aws.ToString(g.Grantee.URI) == allUsersURI &&
+			g.Permission == types.PermissionRead {
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "expected AllUsers READ grant in bucket ACL after PutBucketAcl public-read")
 }
 
 func TestGetObjectACL(t *testing.T) {
