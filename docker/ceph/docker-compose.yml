@@ -14,11 +14,12 @@ services:
       CEPH_DEMO_ACCESS_KEY: cephtest
       CEPH_DEMO_SECRET_KEY: cephtestsecret
       DEMO_DAEMONS: "osd rgw"
+      # Single-OSD cluster: pools default to size=2 which never reaches active+clean.
+      OSD_POOL_DEFAULT_SIZE: "1"
     ports:
       - "7480:8080"
     volumes:
       - ceph-data:/var/lib/ceph
-      - ./ceph.conf:/etc/ceph/ceph.conf:ro
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://127.0.0.1:8080"]
       interval: 10s
