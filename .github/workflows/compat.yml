@@ -148,14 +148,24 @@ jobs:
             docker exec "$CNAME" ceph osd pool set "$pool" min_size 1 2>/dev/null || true
           done
           echo "Pool sizes set to 1."
-          # Wait for RGW to respond (403 on unauthenticated GET / is fine — RGW is up).
+          # Wait for all PGs to become active (no creating/peering/unknown states).
+          # This is needed before RGW can serve S3 requests reliably.
+          for i in $(seq 1 60); do
+            pg_out=$(docker exec "$CNAME" ceph -s 2>/dev/null)
+            if ! echo "$pg_out" | grep -qE " creating| unknown"; then
+              echo "Ceph PGs active."
+              break
+            fi
+            sleep 3
+          done
+          # Final RGW HTTP check (403 on unauthenticated GET / is fine — RGW is up).
           for i in $(seq 1 60); do
             code=$(curl -so /dev/null -w '%{http_code}' http://localhost:7480 2>/dev/null)
             if [ "$code" -ge 200 ] 2>/dev/null; then
               echo "Ceph RGW is up (HTTP $code)."
               exit 0
             fi
-            sleep 5
+            sleep 3
           done
           echo "Ceph RGW did not become healthy in time." >&2
           docker compose -f docker/ceph/docker-compose.yml logs
