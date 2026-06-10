@@ -25,6 +25,10 @@ targets:
       select: true
       tagging: true
       multipart: true
+      strict_auth: true
+      strict_delete_bucket: true
+      list_buckets_consistent: true
+      list_multipart: true
 
   minio:
     endpoint: https://localhost:9000
@@ -48,6 +52,10 @@ targets:
       select: true
       tagging: true
       multipart: true
+      strict_auth: true
+      strict_delete_bucket: true
+      list_buckets_consistent: true
+      list_multipart: true
 
   seaweedfs:
     endpoint: http://localhost:8333
@@ -71,6 +79,10 @@ targets:
       select: false
       tagging: true
       multipart: true
+      strict_auth: false
+      strict_delete_bucket: false
+      list_buckets_consistent: false
+      list_multipart: true
 
   garage:
     endpoint: http://localhost:3900
@@ -94,6 +106,10 @@ targets:
       select: false
       tagging: false
       multipart: true
+      strict_auth: true
+      strict_delete_bucket: true
+      list_buckets_consistent: true
+      list_multipart: true
 
   rustfs:
     endpoint: http://localhost:9100
@@ -117,6 +133,10 @@ targets:
       select: false
       tagging: true
       multipart: true
+      strict_auth: true
+      strict_delete_bucket: true
+      list_buckets_consistent: true
+      list_multipart: false
 
   liteio:
     endpoint: https://localhost:9200
@@ -140,3 +160,7 @@ targets:
       select: true
       tagging: true
       multipart: true
+      strict_auth: true
+      strict_delete_bucket: true
+      list_buckets_consistent: true
+      list_multipart: true

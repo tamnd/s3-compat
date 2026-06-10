@@ -54,6 +54,7 @@ func TestCreateBucketIdempotent(t *testing.T) {
 }
 
 func TestDeleteNonEmptyBucket(t *testing.T) {
+	skip.Feature(t, "strict_delete_bucket", client.Target.Features)
 	bucket := client.RandBucket("buckets")
 	client.CreateBucket(t, bucket)
 	client.PutObject(t, bucket, "key.txt", []byte("data"))
@@ -69,6 +70,7 @@ func TestHeadBucketNotFound(t *testing.T) {
 }
 
 func TestListBucketsContainsCreated(t *testing.T) {
+	skip.Feature(t, "list_buckets_consistent", client.Target.Features)
 	bucket := client.RandBucket("buckets")
 	client.CreateBucket(t, bucket)
 	out, err := client.S3.ListBuckets(context.Background(), nil)

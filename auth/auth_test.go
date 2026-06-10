@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/stretchr/testify/require"
 	"github.com/tamnd/s3-compat/compat/s3client"
+	"github.com/tamnd/s3-compat/compat/skip"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 )
@@ -53,12 +54,14 @@ func TestValidCredentials(t *testing.T) {
 }
 
 func TestInvalidSecretKey(t *testing.T) {
+	skip.Feature(t, "strict_auth", client.Target.Features)
 	bad := buildClient(t, client.Target.AccessKey, "wrong-secret-key-xyz")
 	_, err := bad.ListBuckets(context.Background(), nil)
 	require.Error(t, err)
 }
 
 func TestInvalidAccessKeyID(t *testing.T) {
+	skip.Feature(t, "strict_auth", client.Target.Features)
 	bad := buildClient(t, "FAKEID12345", "fakesecret")
 	_, err := bad.ListBuckets(context.Background(), nil)
 	require.Error(t, err)
@@ -111,6 +114,7 @@ func TestPresignedPutURL(t *testing.T) {
 }
 
 func TestPresignedURLExpired(t *testing.T) {
+	skip.Feature(t, "strict_auth", client.Target.Features)
 	bucket := client.RandBucket("auth")
 	client.CreateBucket(t, bucket)
 	client.PutObject(t, bucket, "exp.txt", []byte("expiry test"))

@@ -54,6 +54,14 @@ func featureEnabled(key string, f config.Features) bool {
 		return f.Tagging
 	case "multipart":
 		return f.Multipart
+	case "strict_auth":
+		return f.StrictAuth
+	case "strict_delete_bucket":
+		return f.StrictDeleteBucket
+	case "list_buckets_consistent":
+		return f.ListBucketsConsistent
+	case "list_multipart":
+		return f.ListMultipart
 	default:
 		// Unknown feature: assume enabled, do not skip.
 		return true

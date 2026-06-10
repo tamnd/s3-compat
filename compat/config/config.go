@@ -26,6 +26,12 @@ type Features struct {
 	Select           bool `yaml:"select"`
 	Tagging          bool `yaml:"tagging"`
 	Multipart        bool `yaml:"multipart"`
+
+	// Behavior flags: document quirks that deviate from the S3 spec.
+	StrictAuth           bool `yaml:"strict_auth"`            // enforces credential validation and presigned URL expiry
+	StrictDeleteBucket   bool `yaml:"strict_delete_bucket"`   // returns BucketNotEmpty instead of silently deleting
+	ListBucketsConsistent bool `yaml:"list_buckets_consistent"` // ListBuckets immediately reflects CreateBucket
+	ListMultipart        bool `yaml:"list_multipart"`          // ListMultipartUploads returns in-progress uploads
 }
 
 // Target holds connection and capability settings for one S3 endpoint.
