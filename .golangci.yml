@@ -1,7 +1,10 @@
-linters-settings:
-  errcheck:
-    # Exclude Close() calls — errors are not actionable after a read, and
-    # io.Closer.Close is excluded by golangci-lint v1 defaults.
-    exclude-functions:
-      - (io.Closer).Close
-      - (io.ReadCloser).Close
+version: "2"
+
+linters:
+  settings:
+    errcheck:
+      # Exclude Close() calls — errors are not actionable after a read.
+      # io.Closer.Close was excluded by golangci-lint v1 defaults.
+      exclude-functions:
+        - (io.Closer).Close
+        - (io.ReadCloser).Close
