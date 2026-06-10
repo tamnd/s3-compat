@@ -158,13 +158,15 @@ jobs:
 
       - name: Wait for Ceph RGW
         run: |
-          # Retry getting CNAME until the container is running.
+          # Get container ID.
+          CNAME=""
           for i in $(seq 1 30); do
             CNAME=$(docker compose -f docker/ceph/docker-compose.yml ps -q ceph 2>/dev/null)
             [ -n "$CNAME" ] && break
             sleep 2
           done
           echo "Container: $CNAME"
+
           # Step 1: set pool defaults in the config DB as early as possible.
           for i in $(seq 1 30); do
             if docker exec "$CNAME" ceph mon dump >/dev/null 2>&1; then
@@ -175,47 +177,72 @@ jobs:
             fi
             sleep 2
           done
-          # Step 2: host-side background pool resizer so that every pool
-          # (including those RGW creates lazily after SUCCESS) gets size=1.
-          (
+
+          # Step 2: run pool resizer INSIDE the container so ceph commands have
+          # direct keyring access and no docker-exec overhead from the host.
+          # Set min_size before size (Ceph requires size >= min_size).
+          docker exec -d "$CNAME" bash -c '
             while true; do
-              for pool in $(docker exec "$CNAME" ceph osd pool ls 2>/dev/null); do
-                docker exec "$CNAME" ceph osd pool set "$pool" size 1 \
-                  --yes-i-really-mean-it 2>/dev/null || true
-                docker exec "$CNAME" ceph osd pool set "$pool" min_size 1 \
-                  --yes-i-really-mean-it 2>/dev/null || true
+              for pool in $(ceph osd pool ls 2>/dev/null); do
+                ceph osd pool set "$pool" min_size 1 --yes-i-really-mean-it 2>/dev/null || true
+                ceph osd pool set "$pool" size 1 --yes-i-really-mean-it 2>/dev/null || true
               done
-              sleep 5
+              sleep 3
             done
-          ) &
-          RESIZER_PID=$!
-          echo "Background resizer PID: $RESIZER_PID"
-          # Step 3: wait for demo to create the S3 user (more reliable than log grep).
+          '
+          echo "Pool resizer running inside container."
+
+          # Step 3: wait for demo to create the S3 user.
           for i in $(seq 1 60); do
             docker exec "$CNAME" radosgw-admin user info --uid=s3test >/dev/null 2>&1 \
               && { echo "S3 user exists — demo complete."; break; }
-            [ "$i" = "60" ] && { echo "Demo timed out." >&2; docker compose -f docker/ceph/docker-compose.yml logs; kill $RESIZER_PID 2>/dev/null; exit 1; }
+            [ "$i" = "60" ] && { echo "Demo timed out." >&2; docker compose -f docker/ceph/docker-compose.yml logs; exit 1; }
             sleep 5
           done
-          # Step 4: wait for HEALTH_OK (resizer handles any remaining pools).
-          for i in $(seq 1 60); do
-            docker exec "$CNAME" ceph health 2>/dev/null | grep -q "^HEALTH_OK$" && { echo "Ceph cluster HEALTH_OK."; break; }
-            [ "$i" = "60" ] && echo "WARNING: cluster not HEALTH_OK after 3 min, proceeding."
+
+          # Step 4: wait for HEALTH_OK, or at least no unknown/peering PGs.
+          for i in $(seq 1 90); do
+            health=$(docker exec "$CNAME" ceph health 2>/dev/null)
+            echo "Health[$i]: $health"
+            if echo "$health" | grep -q "^HEALTH_OK$"; then
+              echo "Cluster HEALTH_OK."
+              break
+            fi
+            if [ "$i" -ge 60 ]; then
+              pg_stat=$(docker exec "$CNAME" ceph pg stat 2>/dev/null)
+              if ! echo "$pg_stat" | grep -qE "unknown|creating|peering"; then
+                echo "No unknown/creating/peering PGs — proceeding despite HEALTH_WARN."
+                break
+              fi
+            fi
             sleep 3
           done
-          kill $RESIZER_PID 2>/dev/null || true
-          # Step 5: recreate the S3 user in the now-stable pools.
+
+          # Step 5: recreate the S3 user so it lands in fully-sized pools.
           docker exec "$CNAME" radosgw-admin user rm --uid=s3test 2>/dev/null || true
           docker exec "$CNAME" radosgw-admin user create \
             --uid=s3test --display-name="S3Test" \
-            --access-key=cephtest --secret-key=cephtestsecret 2>/dev/null \
-          && echo "S3 user recreated." || echo "WARNING: user create failed."
-          # Step 6: verify S3 actually works (ListBuckets via AWS CLI).
+            --access-key=cephtest --secret-key=cephtestsecret \
+          && echo "S3 user recreated." || { echo "User create failed." >&2; exit 1; }
+
+          # Step 6: verify S3 via Python boto3 (aws-cli s3 ls has a NoneType bug
+          # with Ceph RGW on ubuntu-24.04).
+          pip3 install boto3 -q 2>/dev/null || true
           for i in $(seq 1 30); do
-            if AWS_DEFAULT_REGION=us-east-1 \
-               AWS_ACCESS_KEY_ID=cephtest \
-               AWS_SECRET_ACCESS_KEY=cephtestsecret \
-               aws --endpoint-url http://localhost:7480 s3 ls 2>&1; then
+            if python3 - <<'PYEOF' 2>&1; then
+import sys, boto3, botocore.exceptions
+s3 = boto3.client(
+    's3', endpoint_url='http://localhost:7480',
+    aws_access_key_id='cephtest', aws_secret_access_key='cephtestsecret',
+    region_name='us-east-1')
+try:
+    r = s3.list_buckets()
+    print('ListBuckets OK, buckets:', r.get('Buckets', []))
+    sys.exit(0)
+except botocore.exceptions.ClientError as e:
+    print('ClientError:', e, file=sys.stderr)
+    sys.exit(1)
+PYEOF
               echo "Ceph RGW S3 operational."
               exit 0
             fi
