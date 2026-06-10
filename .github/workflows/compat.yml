@@ -168,8 +168,11 @@ jobs:
           echo "Container: $CNAME"
 
           # Step 1: set pool defaults in config DB early.
+          # Ceph Reef disables pool size=1 by default; mon_allow_pool_size_one
+          # must be set first or every 'pool set size 1' gets EPERM.
           for i in $(seq 1 30); do
             if docker exec "$CNAME" ceph mon dump >/dev/null 2>&1; then
+              docker exec "$CNAME" ceph config set global mon_allow_pool_size_one true 2>/dev/null || true
               docker exec "$CNAME" ceph config set global osd_pool_default_min_size 1 2>/dev/null || true
               docker exec "$CNAME" ceph config set global osd_pool_default_size 1 2>/dev/null || true
               echo "Cluster pool defaults set."
